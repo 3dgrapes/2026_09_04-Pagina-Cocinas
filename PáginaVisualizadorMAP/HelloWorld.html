@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Visor de cocina - punto de partida</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #222; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+ 
+  
+  <button id = "btnAgregar" style="position: absolute; top: 20px; left: 20px; z-index: 10;"> <!-- Position y Z-index se usan porque el canvas 3D usa toda la pantalla (es como depth de GMS) -->
+    Agregar modelo
+  </button>
+
+  <!--
+    Import map: le dice al navegador de dónde traer "three" cuando
+    lo pidamos con import. Así no necesitas npm ni un bundler.
+    Es como un CDN, pero usando la sintaxis moderna de módulos JS.
+  -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.184.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.184.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { DragControls } from 'three/addons/controls/DragControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+    // Setup ---------------------------------------------------------------------------------------------------------------
+
+    // Escena
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x2b2b2b);
+    
+    // Camara
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(3, 3, 5);
+    
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  
+    // Aplicamos la pantalla a la página
+    document.body.appendChild(renderer.domElement);
+    
+    // Ponemos luz ambiental
+    const luzAmbiente = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(luzAmbiente);
+    
+    // Luz direccional
+    const luzDireccional = new THREE.DirectionalLight(0xffffff, 1);
+    luzDireccional.position.set(5, 10, 7);
+    scene.add(luzDireccional);
+
+    // Ambiente
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmremGenerator.fromScene(new RoomEnvironment()).texture
+
+    // Controles de órbita: te dejan girar/hacer zoom con el mouse para inspeccionar el modelo mientras desarrollas.
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    // DE AQUI HACIA ARRIBA NO SE TOCA NADA ###################################################################################################################################################
+
+    // Funciones
+    function aplicarEmissive(objeto, color) {
+      objeto.traverse((hijo) => {
+        if (hijo.isMesh) {
+          hijo.material.emissive.set(color);
+        }
+      });
+    }
+
+    function obtenerAnchors(modulo) {
+      const anchors = [];
+      modulo.traverse((hijo) => { // Traverse recorre los hijos del objeto
+        if (hijo.name.startsWith('Snap_')) {
+          anchors.push(hijo);
+        }
+      });
+      return anchors;
+    }
+
+    // Piso
+    const geometriaPiso = new THREE.PlaneGeometry(10, 10);
+    const materialPiso = new THREE.MeshStandardMaterial({ color: 0x888888 });
+    const piso = new THREE.Mesh(geometriaPiso, materialPiso);
+    piso.rotation.x = -Math.PI / 2; // lo acuesta para que sea "suelo", no una pared
+    scene.add(piso);
+
+    const ModulosEnEscena = [];
+    let DControls;
+
+
+    // Loader --------------------------------------------------------------------------------------------------------------
+    
+    const loader = new GLTFLoader();
+    
+    // Cargas el modelo a una variable para que otros puedan accederlo.
+    let modeloBase = null;
+
+    loader.load('models/GabinetePuertas.glb', (gltf) => {
+      console.log(gltf.scene); // expándelo en consola
+      modeloBase = gltf.scene;
+      scene.add(modeloBase)
+      ModulosEnEscena.push(modeloBase);
+
+      DControls = new DragControls([modeloBase], camera, renderer.domElement);
+      DControls.transformGroup = true; // Para que arraster los anclajes junto con el modelo base
+      DControls.connect(); // Se prende
+
+      DControls.addEventListener("hoveron", function(event){
+        aplicarEmissive(event.object, 0xff0000);
+      });
+
+      DControls.addEventListener("hoveroff", function(event){
+        aplicarEmissive(event.object, 0x000000);
+      });
+
+      DControls.addEventListener("drag", function(event){
+        event.object.position.y = 0;
+        aplicarEmissive(event.object, 0xaaaaaa);
+        controls.enabled = false;
+      });
+    
+      const UMBRAL_SNAP = 0.80; // distancia en unidades del mundo para que "cuente" como cercano
+
+      DControls.addEventListener('dragend', function (event) {
+        aplicarEmissive(event.object, 0x000000);
+        controls.enabled = true;
+
+        const moduloActivo = event.object;
+        const anchorsActivo = obtenerAnchors(moduloActivo);
+        console.log('Anchors del módulo activo:', anchorsActivo.length, anchorsActivo.map(a => a.name));
+
+        for (const otroModulo of ModulosEnEscena) {
+          if (otroModulo === moduloActivo) continue;
+
+          const anchorsOtro = obtenerAnchors(otroModulo);
+          console.log('Anchors del otro módulo:', anchorsOtro.length, anchorsOtro.map(a => a.name));
+
+          for (const anchorA of anchorsActivo) {
+            const posA = new THREE.Vector3();
+            anchorA.getWorldPosition(posA);
+
+            for (const anchorB of anchorsOtro) {
+              const posB = new THREE.Vector3();
+              anchorB.getWorldPosition(posB);
+              const distancia = posA.distanceTo(posB);
+              console.log(`Distancia entre ${anchorA.name} y ${anchorB.name}:`, distancia);
+
+              if (distancia < UMBRAL_SNAP) {
+                const offset = posB.clone().sub(posA);
+                moduloActivo.position.add(offset);
+                return;
+              }
+            }
+          }
+        }
+      });
+    });
+            
+
+
+    //Conectamos el boton que creamos fuera del script con la función que va a crear nuestro modelo
+    const boton = document.getElementById('btnAgregar');
+
+    boton.addEventListener('click', () => {
+      if (!modeloBase) return;
+      const copia = modeloBase.clone();
+      copia.position.x += 3;
+      scene.add(copia);
+      ModulosEnEscena.push(copia);
+      DControls.objects.push(copia); // ahora sí es arrastrable
+    });
+
+
+
+
+
+
+    // ##########################################################################################################################################################################
+    // Animación -----------------------------------------------------------------------------------------------------
+
+    // --- 5. Loop de render ---
+    function animar() {
+      requestAnimationFrame(animar);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animar();
+
+    // --- 6. Ajustar tamaño si cambia la ventana ---
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+  </script>
+
+
+
+
+
+</body>
+</html>
