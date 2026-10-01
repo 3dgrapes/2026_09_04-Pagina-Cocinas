@@ -90,6 +90,14 @@
       return anchors;
     }
 
+    function obtenerRaizModulo(objeto) {
+      let actual = objeto;
+      while (actual.parent && !ModulosEnEscena.includes(actual)) {
+        actual = actual.parent;
+      }
+      return actual;
+    }
+
     // Piso
     const geometriaPiso = new THREE.PlaneGeometry(10, 10);
     const materialPiso = new THREE.MeshStandardMaterial({ color: 0x888888 });
@@ -119,23 +127,23 @@
       DControls.connect(); // Se prende
 
       DControls.addEventListener("hoveron", function(event){
-        aplicarEmissive(event.object, 0xff0000);
+        aplicarEmissive(obtenerRaizModulo(event.object), 0xff0000);
       });
 
       DControls.addEventListener("hoveroff", function(event){
-        aplicarEmissive(event.object, 0x000000);
+        aplicarEmissive(obtenerRaizModulo(event.object), 0x000000);
       });
 
       DControls.addEventListener("drag", function(event){
         event.object.position.y = 0;
-        aplicarEmissive(event.object, 0xaaaaaa);
+        aplicarEmissive(obtenerRaizModulo(event.object), 0xaaaaaa);
         controls.enabled = false;
       });
     
-      const UMBRAL_SNAP = 0.80; // distancia en unidades del mundo para que "cuente" como cercano
+      const UMBRAL_SNAP = 0.15; // distancia en unidades del mundo para que "cuente" como cercano
 
       DControls.addEventListener('dragend', function (event) {
-        aplicarEmissive(event.object, 0x000000);
+        aplicarEmissive(obtenerRaizModulo(event.object), 0x000000);
         controls.enabled = true;
 
         const moduloActivo = event.object;
