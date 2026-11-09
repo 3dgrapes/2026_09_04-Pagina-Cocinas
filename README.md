@@ -2,6 +2,19 @@
 
 Aplicación web que permite visualizar módulos de cocina en 3D y combinarlos mediante snapping para planear el layout de una cocina, directamente desde el navegador y sin instalar nada.
 
+## Cómo ejecutar
+
+Requiere [Docker](https://www.docker.com/products/docker-desktop/) instalado.
+
+```bash
+docker build -t visualizador-cocina .
+docker run -d --name visualizador -p 8080:80 visualizador-cocina
+```
+
+Después abre `http://localhost:8080` en el navegador.
+
+ La aplicación carga Three.js desde un CDN, por lo que necesita conexión a internet.
+
 ## Problema
 
 Planear la distribución de una cocina con módulos suele depender de planos 2D, medidas a mano o software que requiere instalación. Es difícil imaginar cómo quedan las piezas combinadas y cuánto espacio ocupan.
