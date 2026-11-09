@@ -8,7 +8,7 @@ Requiere [Docker](https://www.docker.com/products/docker-desktop/) instalado.
 
 ```bash
 docker build -t visualizador-cocina .
-docker run -p 8080:80 visualizador-cocina
+docker run -d --name visualizador -p 8080:80 visualizador-cocina
 ```
 
 Después abre `http://localhost:8080` en el navegador.
