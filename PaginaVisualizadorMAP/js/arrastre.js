@@ -76,6 +76,24 @@ export function crearArrastre({ modulos, camera, renderer, orbit, piso, alCambia
     notificar();
   }
 
+  // Eliminar --------------------------------------------------------------------------
+  // Quita el módulo de la escena y de la lista
+  function quitar(modulo) {
+    if (arrastrando) return;           // no se borra a medio arrastre
+    const i = modulos.indexOf(modulo); // -1 si no está en la lista
+    if (i === -1) return;
+
+    modulos.splice(i, 1);              // fuera de la lista: ya no lo ven el raycaster ni el snapping
+    modulo.removeFromParent();         // fuera de la escena: ya no se dibuja
+    modulo.userData.modulo.liberar();  // libera sus materiales
+
+    if (hover === modulo) {
+      hover = null;
+      canvas.style.cursor = 'auto';
+    }
+    notificar(); // si estaba en rojo, el aviso debe actualizarse
+  }
+
   // Snapping --------------------------------------------------------------------------
   function intentarSnap(moduloActivo) {
     const anchorsActivo = moduloActivo.userData.modulo.obtenerAnchors();
@@ -163,5 +181,7 @@ export function crearArrastre({ modulos, camera, renderer, orbit, piso, alCambia
   canvas.addEventListener('pointerup', soltar);
   canvas.addEventListener('pointercancel', soltar);
 
-  return { revisarTodos };
+  // Lo que index.html puede usar. obtenerHover es una función (no el valor) para que
+  // siempre devuelva el hover actual, no el que había al crear el arrastre.
+  return { revisarTodos, quitar, obtenerHover: () => hover };
 }

@@ -25,5 +25,6 @@ Después abre `http://localhost:8080` en el navegador.
 
 | Historia | Issue | Pull request |
 |---|---|---|
-| Ejecutar con Docker | #3 | #N |
-| Catálogo de módulos | #2 | (pendiente) |
+| Ejecutar con Docker | #3 | #9 |
+| Catálogo de módulos | #2 | #11 |
+| Eliminación de módulos | #6 | (pendiente) |

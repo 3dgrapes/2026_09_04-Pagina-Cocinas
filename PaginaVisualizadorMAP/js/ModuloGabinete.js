@@ -27,6 +27,15 @@ export class ModuloGabinete {
     this.mesh.position.copy(posicion);
   }
 
+  // Libera la memoria de la tarjeta gráfica al borrar el módulo.
+  // Solo los materiales: son propios de esta copia. La geometría la comparten
+  // todas las copias del mismo tipo, así que no se toca.
+  liberar() {
+    this.mesh.traverse((hijo) => {
+      if (hijo.isMesh) hijo.material.dispose();
+    });
+  }
+
   obtenerAnchors() {
     const anchors = [];
     this.mesh.traverse((hijo) => {
