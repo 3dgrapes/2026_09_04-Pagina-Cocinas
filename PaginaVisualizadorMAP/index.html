@@ -11,9 +11,13 @@
 <body>
  
   
-  <button id = "btnAgregar" style="position: absolute; top: 20px; left: 20px; z-index: 10;"> <!-- Position y Z-index se usan porque el canvas 3D usa toda la pantalla (es como depth de GMS) -->
-    Agregar modelo
-  </button>
+  <div id="panelCatalogo" style="position:absolute; top:20px; left:20px; z-index:10; display:flex; flex-direction:column; gap:6px;"></div>
+  <div id="aviso" style="display:none; position:absolute; top:20px; right:20px; z-index:10; background:#b00020; color:#fff; padding:8px 12px; border-radius:6px; font-family:sans-serif;"></div>
+
+  <div style="position:absolute; bottom:20px; left:20px; z-index:10; color:#fff; font-family:sans-serif;">
+    Ancho (m) <input id="inputAncho" type="number" min="1" step="0.5" value="10" style="width:60px">
+    Fondo (m) <input id="inputFondo" type="number" min="1" step="0.5" value="10" style="width:60px">
+  </div>
 
   <!--
     Import map: le dice al navegador de dónde traer "three" cuando
@@ -33,8 +37,14 @@
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { DragControls } from 'three/addons/controls/DragControls.js';
-    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+    import { DEFINICIONES, precargarCatalogo } from './js/catalogo.js';
+    import { ModuloGabinete } from './js/ModuloGabinete.js';
+    import { crearArrastre } from './js/arrastre.js';
+    import { crearPiso } from './js/piso.js';
+    import { limitarCamara } from './js/camara.js';
+    
     // Setup ---------------------------------------------------------------------------------------------------------------
 
     // Escena
@@ -71,148 +81,77 @@
 
     // DE AQUI HACIA ARRIBA NO SE TOCA NADA ###################################################################################################################################################
 
-    // Funciones
-    function aplicarEmissive(objeto, color) {
-      objeto.traverse((hijo) => {
-        if (hijo.isMesh) {
-          hijo.material.emissive.set(color);
-        }
-      });
-    }
-
-    function obtenerAnchors(modulo) {
-      const anchors = [];
-      modulo.traverse((hijo) => { // Traverse recorre los hijos del objeto
-        if (hijo.name.startsWith('Snap_')) {
-          anchors.push(hijo);
-        }
-      });
-      return anchors;
-    }
-
-    function obtenerRaizModulo(objeto) {
-      let actual = objeto;
-      while (actual.parent && !ModulosEnEscena.includes(actual)) {
-        actual = actual.parent;
-      }
-      return actual;
-    }
 
     // Piso
-    const geometriaPiso = new THREE.PlaneGeometry(10, 10);
-    const materialPiso = new THREE.MeshStandardMaterial({ color: 0x888888 });
-    const piso = new THREE.Mesh(geometriaPiso, materialPiso);
-    piso.rotation.x = -Math.PI / 2; // lo acuesta para que sea "suelo", no una pared
-    scene.add(piso);
+    const piso = crearPiso(scene, 10, 10);
 
     const ModulosEnEscena = [];
-    let DControls;
-
-
-    // Loader --------------------------------------------------------------------------------------------------------------
     
-    const loader = new GLTFLoader();
-    
-    // Cargas el modelo a una variable para que otros puedan accederlo.
-    let modeloBase = null;
-
-    loader.load('models/GabinetePuertas.glb', (gltf) => {
-      console.log(gltf.scene); // expándelo en consola
-      modeloBase = gltf.scene;
-      scene.add(modeloBase)
-      ModulosEnEscena.push(modeloBase);
-
-      DControls = new DragControls([modeloBase], camera, renderer.domElement);
-      DControls.transformGroup = true; // Para que arraster los anclajes junto con el modelo base
-      DControls.connect(); // Se prende
-
-      DControls.addEventListener("hoveron", function(event){
-        aplicarEmissive(obtenerRaizModulo(event.object), 0xff0000);
-      });
-
-      DControls.addEventListener("hoveroff", function(event){
-        aplicarEmissive(obtenerRaizModulo(event.object), 0x000000);
-      });
-
-      DControls.addEventListener("drag", function(event){
-        event.object.position.y = 0;
-        aplicarEmissive(obtenerRaizModulo(event.object), 0xaaaaaa);
-        controls.enabled = false;
-      });
-    
-      const UMBRAL_SNAP = 0.15; // distancia en unidades del mundo para que "cuente" como cercano
-
-      DControls.addEventListener('dragend', function (event) {
-        aplicarEmissive(obtenerRaizModulo(event.object), 0x000000);
-        controls.enabled = true;
-
-        const moduloActivo = event.object;
-        const anchorsActivo = obtenerAnchors(moduloActivo);
-        console.log('Anchors del módulo activo:', anchorsActivo.length, anchorsActivo.map(a => a.name));
-
-        for (const otroModulo of ModulosEnEscena) {
-          if (otroModulo === moduloActivo) continue;
-
-          const anchorsOtro = obtenerAnchors(otroModulo);
-          console.log('Anchors del otro módulo:', anchorsOtro.length, anchorsOtro.map(a => a.name));
-
-          for (const anchorA of anchorsActivo) {
-            const posA = new THREE.Vector3();
-            anchorA.getWorldPosition(posA);
-
-            for (const anchorB of anchorsOtro) {
-              const posB = new THREE.Vector3();
-              anchorB.getWorldPosition(posB);
-              const distancia = posA.distanceTo(posB);
-              console.log(`Distancia entre ${anchorA.name} y ${anchorB.name}:`, distancia);
-
-              if (distancia < UMBRAL_SNAP) {
-                const offset = posB.clone().sub(posA);
-                moduloActivo.position.add(offset);
-                return;
-              }
-            }
-          }
-        }
-      });
+    const aviso = document.getElementById('aviso');
+    const arrastre = crearArrastre({
+      modulos: ModulosEnEscena,
+      camera,
+      renderer,
+      orbit: controls,
+      piso,
+      alCambiarEstado: (n) => {
+        aviso.style.display = n > 0 ? 'block' : 'none';
+        aviso.textContent = n === 1 ? '1 módulo fuera del piso' : `${n} módulos fuera del piso`;
+      }
     });
-            
+    const limites = limitarCamara({ controls, camera, piso });
 
+    // Agregar módulos -----------------------------------------------------------------
+    function agregarModulo(tipo) {
+      const modulo = new ModuloGabinete({
+        tipo,
+        posicion: new THREE.Vector3(ModulosEnEscena.length * 0.8, 0, 0) // temporal: evita que salgan encimados
+      });
+      scene.add(modulo.mesh);
+      ModulosEnEscena.push(modulo.mesh);
+      arrastre.revisarTodos();
+    }
 
-    //Conectamos el boton que creamos fuera del script con la función que va a crear nuestro modelo
-    const boton = document.getElementById('btnAgregar');
-
-    boton.addEventListener('click', () => {
-      if (!modeloBase) return;
-      const copia = modeloBase.clone();
-      copia.position.x += 3;
-      scene.add(copia);
-      ModulosEnEscena.push(copia);
-      DControls.objects.push(copia); // ahora sí es arrastrable
-    });
-
-
-
-
-
-
-    // ##########################################################################################################################################################################
-    // Animación -----------------------------------------------------------------------------------------------------
-
-    // --- 5. Loop de render ---
+    // Animación -----------------------------------------------------------------------
     function animar() {
       requestAnimationFrame(animar);
+      limites.aplicar();
       controls.update();
       renderer.render(scene, camera);
     }
     animar();
 
-    // --- 6. Ajustar tamaño si cambia la ventana ---
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
+
+    // Catálogo y botones (siempre al final) ---------------------------------------------
+    await precargarCatalogo();
+
+    const panel = document.getElementById('panelCatalogo');
+    for (const def of DEFINICIONES) {
+      const boton = document.createElement('button');
+      boton.textContent = def.nombre;
+      boton.addEventListener('click', () => agregarModulo(def.tipo));
+      panel.appendChild(boton);
+    }
+
+    // Piso ------------------------------------------------------------------------------
+    const inputAncho = document.getElementById('inputAncho');
+    const inputFondo = document.getElementById('inputFondo');
+
+    function cambiarPiso() {
+      const ancho = parseFloat(inputAncho.value);
+      const fondo = parseFloat(inputFondo.value);
+      if (!(ancho >= 1 && fondo >= 1)) return;
+      piso.redimensionar(ancho, fondo);
+      limites.actualizar();
+      arrastre.revisarTodos(); // algún módulo pudo quedar fuera
+    }
+    inputAncho.addEventListener('change', cambiarPiso);
+    inputFondo.addEventListener('change', cambiarPiso);
 
   </script>
 
