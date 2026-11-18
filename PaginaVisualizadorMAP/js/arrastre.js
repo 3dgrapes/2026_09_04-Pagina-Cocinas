@@ -22,7 +22,9 @@ function aplicarEmissive(objeto, color) {
   });
 }
 
-export function crearArrastre({ modulos, camera, renderer, orbit, piso, gizmo, alCambiarEstado }) {
+// alCambiarEstado(n): cuántos módulos hay fuera del piso (para el aviso rojo)
+// alCambiarEscena(): algo se movió, giró, borró o se (de)seleccionó (para recalcular las cotas)
+export function crearArrastre({ modulos, camera, renderer, orbit, piso, gizmo, alCambiarEstado, alCambiarEscena }) {
   const canvas = renderer.domElement;
   const raycaster = new THREE.Raycaster();
   const puntero = new THREE.Vector2();
@@ -70,11 +72,13 @@ export function crearArrastre({ modulos, camera, renderer, orbit, piso, gizmo, a
   function seleccionar(modulo) {
     seleccionado = modulo;
     gizmo.mostrar(modulo);
+    alCambiarEscena?.(); // aparece la cota individual
   }
 
   function deseleccionar() {
     seleccionado = null;
     gizmo.ocultar();
+    alCambiarEscena?.(); // desaparece la cota individual
   }
 
   // Al empezar a arrastrar o rotar: la cámara se queda quieta y el mouse queda "atrapado"
@@ -106,8 +110,11 @@ export function crearArrastre({ modulos, camera, renderer, orbit, piso, gizmo, a
     aplicarEmissive(modulo, color);
   }
 
+  // Se llama cada vez que un módulo se revisa (al moverlo, girarlo, soltarlo o borrarlo),
+  // así que también es el lugar para avisar que la escena cambió
   function notificar() {
     alCambiarEstado?.(modulos.filter((m) => m.userData.fueraDeLimites).length);
+    alCambiarEscena?.();
   }
 
   function revisarModulo(modulo) {

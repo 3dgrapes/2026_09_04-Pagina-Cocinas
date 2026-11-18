@@ -31,6 +31,7 @@ PaginaVisualizadorMAP/      la aplicación (es lo único que copia el Dockerfile
     arrastre.js             selección, arrastre, rotación, resaltado, límites, snapping, quitar()
     gizmoRotacion.js        anillo + esfera + etiqueta de grados del módulo seleccionado
     colocacion.js           buscarLugarLibre(): dónde aparece un módulo nuevo
+    cotas.js                líneas de medida (ancho de filas unidas y del seleccionado)
     piso.js                 piso redimensionable
     camara.js               límites de zoom y paneo según el piso
   models/                   GLB exportados
@@ -62,6 +63,7 @@ La imagen guarda una copia de los archivos: tras cambiar código hay que reconst
 - **Selección y rotación:** clic selecciona; el gizmo (anillo naranja + esfera al frente) es un objeto **aparte**, no hijo del módulo, para no alterar su `Box3`. La rotación usa la diferencia de ángulos del mouse alrededor del módulo, redondeada a pasos de 5°. Clic en el vacío sin mover el mouse o Esc deseleccionan.
 - **Box3 exacto:** los chequeos usan `setFromObject(obj, true)` (vértices reales). Sin `true`, un módulo girado (sobre todo el esquinero) tiene una caja inflada y se marca en rojo de más.
 - **Eliminar:** Supr borra el seleccionado (o el que está bajo el cursor). Se liberan solo materiales: la geometría la comparten las copias del catálogo.
+- **Cotas (ancho):** el ancho se mide **entre `Snap_L` y `Snap_R`**, no con `Box3` (el `Box3` incluye jaladeras: el gabinete da 65 cm de fondo y el esquinero 97 cm en vez de 95). Solo son "medibles" los módulos con anchor a la izquierda y a la derecha, así que el esquinero queda fuera sin nombrarlo. Dos módulos forman fila si el anchor derecho de uno está a < 1 cm del izquierdo del otro y tienen el mismo giro. Cota de grupo blanca (filas de 2+, a 30 cm del frente) y cota individual naranja (solo el seleccionado, a 12 cm). Medidas en cm. `arrastre.js` avisa con `alCambiarEscena` y `index.html` llama a `cotas.recalcular(seleccionado)`; las etiquetas HTML se reacomodan cada frame.
 - **Lugar libre:** los módulos nuevos se colocan en una cuadrícula de 10 cm, del centro del piso hacia afuera, en la primera posición sin choque de cajas.
 - **Arrastre propio** (no `DragControls`): raycaster contra el plano `y = 0`, para que el módulo siga al cursor sin importar el ángulo de cámara. `DragControls` arrastra sobre un plano perpendicular a la cámara y se desfasaba.
 - **Módulo raíz:** un rayo golpea una malla hija (puerta, jaladera); siempre se sube por los padres hasta el mesh raíz registrado en la lista de módulos.
@@ -93,9 +95,11 @@ Sprint 1 y sprint 2 fusionados en `main`. Trazabilidad (issue → pull request):
 
 Funciona: catálogo de 9 módulos, arrastre, selección, rotación en pasos de 5°, snap con rotación (lado a lado, espalda con espalda, esquinero), eliminar, colocación en lugar libre, piso redimensionable, límites de cámara, Docker.
 
+En curso (rama `feature/ancho-total`, 2026-11-17): **cotas de ancho** implementadas y probadas en el navegador por el usuario (fila recta, filas giradas, selección). Falta: probar con Docker, pull request de la historia 4 del backlog y documentarlo (crear `docs/sprint-3/` si se abre un sprint nuevo).
+
 ## Pendientes
 
-1. **Ancho total** de los módulos conectados (historia 4 del backlog, prioridad alta). Es la única historia alta que queda.
+1. **Esquinero:** el usuario cree que el modelo no funciona como pensaba (forma/anclajes) y debe aclarar cómo se mide antes de tocarlo. Hoy queda fuera de las cotas. No modificar su lógica hasta que el usuario lo defina.
 2. **Estado de carga del catálogo:** los docs prometen "Cargando..." y no existe; si un GLB falla, no aparecen botones ni mensaje.
 3. Alacena: sus `Snap_L`/`Snap_R` están a 29 cm de la espalda, no a 30 cm (se desfasa 1 cm junto a módulos de piso).
 4. Dejar de rastrear `@ Modelos/Gabinetes.blend1` y decidir si `.blend` y `@ Planos/` se quedan en GitHub (y alinear el `.gitignore`).
@@ -108,3 +112,4 @@ Funciona: catálogo de 9 módulos, arrastre, selección, rotación en pasos de 5
 
 - Qué hacer al soltar un módulo fuera del piso: hoy se queda en rojo donde se soltó; la alternativa es regresarlo a su última posición válida.
 - La búsqueda de lugar libre usa cajas alineadas a los ejes: no aprovecha el hueco de la "L" del esquinero.
+- Cotas: las líneas de WebGL miden siempre 1 px; si se ven delgadas, cambiar a rectángulos planos. Las filas que dan vuelta (con esquinero) deberían mostrar una medida por pared.

@@ -46,7 +46,8 @@
     import { limitarCamara } from './js/camara.js';
     import { buscarLugarLibre } from './js/colocacion.js';
     import { crearGizmoRotacion } from './js/gizmoRotacion.js';
-    
+    import { crearCotas } from './js/cotas.js';
+
     // Setup ---------------------------------------------------------------------------------------------------------------
 
     // Escena
@@ -91,6 +92,7 @@
     
     const aviso = document.getElementById('aviso');
     const gizmo = crearGizmoRotacion({ scene, camera, renderer }); // anillo + esfera del módulo seleccionado
+    const cotas = crearCotas({ scene, camera, renderer, modulos: ModulosEnEscena }); // líneas de medida
     const arrastre = crearArrastre({
       modulos: ModulosEnEscena,
       camera,
@@ -101,7 +103,10 @@
       alCambiarEstado: (n) => {
         aviso.style.display = n > 0 ? 'block' : 'none';
         aviso.textContent = n === 1 ? '1 módulo fuera del piso' : `${n} módulos fuera del piso`;
-      }
+      },
+      // Se usa "arrastre" dentro de la función aunque se esté creando en esta misma línea:
+      // funciona porque la función no se ejecuta ahora, sino después, cuando algo cambie
+      alCambiarEscena: () => cotas.recalcular(arrastre.obtenerSeleccionado())
     });
     const limites = limitarCamara({ controls, camera, piso });
 
@@ -143,6 +148,7 @@
       limites.aplicar();
       controls.update();
       gizmo.actualizar(); // después de mover la cámara, para que la etiqueta quede en su lugar
+      cotas.actualizarEtiquetas();
       renderer.render(scene, camera);
     }
     animar();
