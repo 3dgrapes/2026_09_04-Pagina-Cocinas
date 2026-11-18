@@ -17,7 +17,7 @@
   <div style="position:absolute; bottom:20px; left:20px; z-index:10; color:#fff; font-family:sans-serif;">
     Ancho (m) <input id="inputAncho" type="number" min="1" step="0.5" value="10" style="width:60px">
     Fondo (m) <input id="inputFondo" type="number" min="1" step="0.5" value="10" style="width:60px">
-    <div style="margin-top:6px; font-size:13px; opacity:0.7;">Supr: eliminar el módulo bajo el cursor</div>
+    <div style="margin-top:6px; font-size:13px; opacity:0.7;">Clic: seleccionar · Esfera naranja: rotar · Supr: eliminar · Esc: quitar selección</div>
   </div>
 
   <!--
@@ -45,6 +45,7 @@
     import { crearPiso } from './js/piso.js';
     import { limitarCamara } from './js/camara.js';
     import { buscarLugarLibre } from './js/colocacion.js';
+    import { crearGizmoRotacion } from './js/gizmoRotacion.js';
     
     // Setup ---------------------------------------------------------------------------------------------------------------
 
@@ -89,12 +90,14 @@
     const ModulosEnEscena = [];
     
     const aviso = document.getElementById('aviso');
+    const gizmo = crearGizmoRotacion({ scene, camera, renderer }); // anillo + esfera del módulo seleccionado
     const arrastre = crearArrastre({
       modulos: ModulosEnEscena,
       camera,
       renderer,
       orbit: controls,
       piso,
+      gizmo,
       alCambiarEstado: (n) => {
         aviso.style.display = n > 0 ? 'block' : 'none';
         aviso.textContent = n === 1 ? '1 módulo fuera del piso' : `${n} módulos fuera del piso`;
@@ -123,9 +126,15 @@
     // Eliminar módulos ----------------------------------------------------------------
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT') return; // en los campos del piso, Supr borra texto, no módulos
-      if (e.key !== 'Delete' && e.key !== 'Backspace') return; // Delete = Supr
-      const modulo = arrastre.obtenerHover(); // el módulo que está bajo el cursor (o null)
-      if (modulo) arrastre.quitar(modulo);
+
+      if (e.key === 'Escape') arrastre.deseleccionar();
+
+      if (e.key === 'Delete' || e.key === 'Backspace') { // Delete = Supr
+        // Primero el seleccionado; si no hay, el que está bajo el cursor
+        // (?? usa el de la derecha solo si el de la izquierda es null)
+        const modulo = arrastre.obtenerSeleccionado() ?? arrastre.obtenerHover();
+        if (modulo) arrastre.quitar(modulo);
+      }
     });
 
     // Animación -----------------------------------------------------------------------
@@ -133,6 +142,7 @@
       requestAnimationFrame(animar);
       limites.aplicar();
       controls.update();
+      gizmo.actualizar(); // después de mover la cámara, para que la etiqueta quede en su lugar
       renderer.render(scene, camera);
     }
     animar();

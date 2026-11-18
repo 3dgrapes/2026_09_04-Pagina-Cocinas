@@ -13,8 +13,9 @@ export function buscarLugarLibre({ modulo, modulos, piso }) {
   const mitadX = modulo.dimensiones.x / 2;
   const mitadZ = modulo.dimensiones.z / 2;
 
-  // Cajas de lo que ya está en la escena (se calculan una sola vez)
-  const ocupadas = modulos.map((m) => new THREE.Box3().setFromObject(m));
+  // Cajas de lo que ya está en la escena (se calculan una sola vez).
+  // precise = true para que un módulo girado no "aparte" más espacio del que ocupa.
+  const ocupadas = modulos.map((m) => new THREE.Box3().setFromObject(m, true));
 
   // 1. Todas las posiciones de prueba donde el módulo queda completo dentro del piso
   const candidatos = [];
