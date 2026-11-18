@@ -1,11 +1,20 @@
 import * as THREE from 'three';
 
-const UMBRAL_SNAP = 0.15;
+const UMBRAL_SNAP = 0.15;    // distancia máxima (m) entre anclajes para que se unan
+const TOLERANCIA_GIRO = THREE.MathUtils.degToRad(30); // qué tan chueco puede estar un módulo y aun así alinearse
 const TOLERANCIA = 0.001;    // evita falsos "fuera" por redondeo cuando el módulo queda pegado al borde
 const MARGEN_ARRASTRE = 1;   // cuánto se puede sacar un módulo del piso antes de que ya no siga al cursor
 const COLOR = { normal: 0x000000, hover: 0x2255aa, arrastre: 0xaaaaaa, error: 0xff0000 };
 const PASO_ROTACION = THREE.MathUtils.degToRad(5); // la rotación avanza de 5 en 5 grados
 const UMBRAL_CLIC = 5;       // píxeles: si el mouse se movió menos, fue un clic y no un giro de cámara
+
+// Cuánto hay que girar para ir del ángulo "desde" al ángulo "hasta", por el camino corto.
+// Siempre da un valor entre -π y π (-180° y 180°). Ejemplo: de 350° a 10° da +20°, no -340°.
+// Truco: seno y coseno "olvidan" las vueltas completas, y atan2 los convierte de vuelta en ángulo.
+function diferenciaAngulo(hasta, desde) {
+  const d = hasta - desde;
+  return Math.atan2(Math.sin(d), Math.cos(d));
+}
 
 function aplicarEmissive(objeto, color) {
   objeto.traverse((hijo) => {
@@ -137,28 +146,58 @@ export function crearArrastre({ modulos, camera, renderer, orbit, piso, gizmo, a
   }
 
   // Snapping --------------------------------------------------------------------------
+  // Al soltar un módulo, busca el par de anclajes (uno suyo y uno de otro módulo) que:
+  //   1. estén a menos de UMBRAL_SNAP de distancia, y
+  //   2. se miren casi de frente (con un error de hasta TOLERANCIA_GIRO).
+  // De todos los pares válidos se queda con el más cercano. Luego:
+  //   a. gira el módulo lo justo para que los anclajes queden exactamente frente a frente, y
+  //   b. lo desplaza para que los dos anclajes coincidan en el mismo punto.
+  // El otro módulo nunca se mueve; solo se acomoda el que se soltó.
   function intentarSnap(moduloActivo) {
-    const anchorsActivo = moduloActivo.userData.modulo.obtenerAnchors();
+    const activo = moduloActivo.userData.modulo; // la instancia de ModuloGabinete
+    const posA = new THREE.Vector3();
+    const posB = new THREE.Vector3();
+
+    let mejor = null; // { anchorA, anchorB, distancia, correccion }
 
     for (const otro of modulos) {
       if (otro === moduloActivo) continue;
-      const anchorsOtro = otro.userData.modulo.obtenerAnchors();
+      const vecino = otro.userData.modulo;
 
-      for (const anchorA of anchorsActivo) {
-        const posA = new THREE.Vector3();
-        anchorA.getWorldPosition(posA);
+      for (const anchorA of activo.anchors) {
+        anchorA.objeto.getWorldPosition(posA);
 
-        for (const anchorB of anchorsOtro) {
-          const posB = new THREE.Vector3();
-          anchorB.getWorldPosition(posB);
+        for (const anchorB of vecino.anchors) {
+          anchorB.objeto.getWorldPosition(posB);
 
-          if (posA.distanceTo(posB) < UMBRAL_SNAP) {
-            moduloActivo.position.add(posB.clone().sub(posA));
-            return;
+          // 1. ¿Están cerca?
+          const distancia = posA.distanceTo(posB);
+          if (distancia >= UMBRAL_SNAP) continue;
+
+          // 2. ¿Se miran de frente? Para eso, A debe apuntar justo al lado contrario
+          //    de B: el ángulo de B más media vuelta (π). "correccion" es cuánto le
+          //    falta girar a A para lograrlo.
+          const deseado = vecino.anguloEnMundo(anchorB) + Math.PI;
+          const correccion = diferenciaAngulo(deseado, activo.anguloEnMundo(anchorA));
+          if (Math.abs(correccion) > TOLERANCIA_GIRO) continue; // demasiado chueco: no era la intención
+
+          if (!mejor || distancia < mejor.distancia) {
+            mejor = { anchorA, anchorB, distancia, correccion };
           }
         }
       }
     }
+
+    if (!mejor) return; // nada cerca: el módulo se queda donde se soltó
+
+    // a. Girar. Se gira alrededor del centro del módulo, así que el anclaje se mueve un poco...
+    moduloActivo.rotation.y += mejor.correccion;
+    moduloActivo.updateMatrixWorld(true); // recalcula posiciones con el nuevo giro
+
+    // b. ...y por eso la posición del anclaje se vuelve a leer después de girar
+    mejor.anchorA.objeto.getWorldPosition(posA);
+    mejor.anchorB.objeto.getWorldPosition(posB);
+    moduloActivo.position.add(posB.sub(posA)); // mueve el módulo lo que separa a los dos anclajes
   }
 
   // Eventos de puntero ----------------------------------------------------------------
@@ -239,6 +278,7 @@ export function crearArrastre({ modulos, camera, renderer, orbit, piso, gizmo, a
       const modulo = rotando;
       rotando = null;
       orbit.enabled = true;
+      intentarSnap(modulo);  // si quedó junto a otro, se termina de alinear
       revisarModulo(modulo); // vuelve a su color normal (o rojo si quedó fuera)
       canvas.style.cursor = 'grab';
       return;
