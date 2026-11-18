@@ -4,6 +4,8 @@ const UMBRAL_SNAP = 0.15;
 const TOLERANCIA = 0.001;    // evita falsos "fuera" por redondeo cuando el módulo queda pegado al borde
 const MARGEN_ARRASTRE = 1;   // cuánto se puede sacar un módulo del piso antes de que ya no siga al cursor
 const COLOR = { normal: 0x000000, hover: 0x2255aa, arrastre: 0xaaaaaa, error: 0xff0000 };
+const PASO_ROTACION = THREE.MathUtils.degToRad(5); // la rotación avanza de 5 en 5 grados
+const UMBRAL_CLIC = 5;       // píxeles: si el mouse se movió menos, fue un clic y no un giro de cámara
 
 function aplicarEmissive(objeto, color) {
   objeto.traverse((hijo) => {
@@ -11,16 +13,21 @@ function aplicarEmissive(objeto, color) {
   });
 }
 
-export function crearArrastre({ modulos, camera, renderer, orbit, piso, alCambiarEstado }) {
+export function crearArrastre({ modulos, camera, renderer, orbit, piso, gizmo, alCambiarEstado }) {
   const canvas = renderer.domElement;
   const raycaster = new THREE.Raycaster();
   const puntero = new THREE.Vector2();
   const planoPiso = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const puntoPiso = new THREE.Vector3();
   const offset = new THREE.Vector3();
+  const inicioClic = new THREE.Vector2(); // dónde se apretó el botón, para distinguir clic de arrastre
 
   let arrastrando = null;
   let hover = null;
+  let seleccionado = null;
+  let rotando = null;
+  let anguloInicio = 0;    // ángulo del mouse alrededor del módulo al apretar la esfera
+  let rotacionInicio = 0;  // rotación que tenía el módulo en ese momento
 
   function obtenerRaiz(objeto) {
     let actual = objeto;
@@ -40,10 +47,43 @@ export function crearArrastre({ modulos, camera, renderer, orbit, piso, alCambia
     return golpes.length > 0 ? obtenerRaiz(golpes[0].object) : null;
   }
 
+  function sobreEsfera() {
+    return seleccionado !== null && raycaster.intersectObject(gizmo.esfera).length > 0;
+  }
+
+  // Ángulo de un punto del piso visto desde el centro del módulo.
+  // atan2(x, z) da 0 cuando el punto está justo al frente (+Z), igual que rotation.y = 0.
+  function anguloHacia(punto, modulo) {
+    return Math.atan2(punto.x - modulo.position.x, punto.z - modulo.position.z);
+  }
+
+  // Selección -------------------------------------------------------------------------
+  function seleccionar(modulo) {
+    seleccionado = modulo;
+    gizmo.mostrar(modulo);
+  }
+
+  function deseleccionar() {
+    seleccionado = null;
+    gizmo.ocultar();
+  }
+
+  // Al empezar a arrastrar o rotar: la cámara se queda quieta y el mouse queda "atrapado"
+  // por el canvas aunque salga de él
+  function empezarGesto(e) {
+    e.stopImmediatePropagation(); // OrbitControls ya no recibe este clic
+    orbit.enabled = false;
+    canvas.setPointerCapture(e.pointerId);
+    canvas.style.cursor = 'grabbing';
+  }
+
   // Límites ---------------------------------------------------------------------------
   function estaFuera(modulo) {
     const l = piso.obtenerLimites();
-    const c = new THREE.Box3().setFromObject(modulo);
+    // precise = true: la caja sale de los vértices reales ya girados. Sin él, Three.js gira la
+    // caja de cada pieza y la vuelve a encerrar, y con el módulo girado la caja crece de más.
+    // Como el piso es un rectángulo alineado a los ejes, con la caja exacta el chequeo es exacto.
+    const c = new THREE.Box3().setFromObject(modulo, true);
     return c.min.x < l.min.x - TOLERANCIA || c.max.x > l.max.x + TOLERANCIA ||
            c.min.z < l.min.z - TOLERANCIA || c.max.z > l.max.z + TOLERANCIA;
   }
@@ -52,7 +92,7 @@ export function crearArrastre({ modulos, camera, renderer, orbit, piso, alCambia
   function refrescarColor(modulo) {
     let color = COLOR.normal;
     if (modulo.userData.fueraDeLimites) color = COLOR.error;
-    else if (modulo === arrastrando) color = COLOR.arrastre;
+    else if (modulo === arrastrando || modulo === rotando) color = COLOR.arrastre;
     else if (modulo === hover) color = COLOR.hover;
     aplicarEmissive(modulo, color);
   }
@@ -79,13 +119,15 @@ export function crearArrastre({ modulos, camera, renderer, orbit, piso, alCambia
   // Eliminar --------------------------------------------------------------------------
   // Quita el módulo de la escena y de la lista
   function quitar(modulo) {
-    if (arrastrando) return;           // no se borra a medio arrastre
-    const i = modulos.indexOf(modulo); // -1 si no está en la lista
+    if (arrastrando || rotando) return; // no se borra a medio gesto
+    const i = modulos.indexOf(modulo);  // -1 si no está en la lista
     if (i === -1) return;
 
     modulos.splice(i, 1);              // fuera de la lista: ya no lo ven el raycaster ni el snapping
     modulo.removeFromParent();         // fuera de la escena: ya no se dibuja
     modulo.userData.modulo.liberar();  // libera sus materiales
+
+    if (seleccionado === modulo) deseleccionar(); // si no, el anillo se quedaría flotando
 
     if (hover === modulo) {
       hover = null;
@@ -123,23 +165,45 @@ export function crearArrastre({ modulos, camera, renderer, orbit, piso, alCambia
   canvas.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     apuntarRayo(e);
+    inicioClic.set(e.clientX, e.clientY);
+
+    // 1. La esfera va primero: si el rayo toca la esfera y un módulo, gana la esfera
+    if (sobreEsfera()) {
+      if (!raycaster.ray.intersectPlane(planoPiso, puntoPiso)) return;
+      rotando = seleccionado;
+      anguloInicio = anguloHacia(puntoPiso, rotando);
+      rotacionInicio = rotando.rotation.y;
+      empezarGesto(e);
+      refrescarColor(rotando);
+      return;
+    }
+
+    // 2. Un módulo: se selecciona y empieza el arrastre
     const modulo = moduloBajoPuntero();
-    if (!modulo) return;
+    if (!modulo) return; // 3. Nada: la cámara orbita (al soltar se decide si se deselecciona)
 
-    e.stopImmediatePropagation();
+    seleccionar(modulo);
     arrastrando = modulo;
-    orbit.enabled = false;
-
     raycaster.ray.intersectPlane(planoPiso, puntoPiso);
     offset.copy(modulo.position).sub(puntoPiso);
-
+    empezarGesto(e);
     refrescarColor(modulo);
-    canvas.setPointerCapture(e.pointerId);
-    canvas.style.cursor = 'grabbing';
   }, { capture: true });
 
   canvas.addEventListener('pointermove', (e) => {
     apuntarRayo(e);
+
+    if (rotando) {
+      if (raycaster.ray.intersectPlane(planoPiso, puntoPiso)) {
+        // Cuánto ha girado el mouse alrededor del módulo desde que se apretó la esfera.
+        // Usar la diferencia (y no el ángulo directo) evita un salto si no se apretó justo al centro.
+        const giro = anguloHacia(puntoPiso, rotando) - anguloInicio;
+        // Redondear al múltiplo de 5° más cercano
+        rotando.rotation.y = Math.round((rotacionInicio + giro) / PASO_ROTACION) * PASO_ROTACION;
+        revisarModulo(rotando); // al girar, una esquina puede salir del piso
+      }
+      return;
+    }
 
     if (arrastrando) {
       if (raycaster.ray.intersectPlane(planoPiso, puntoPiso)) {
@@ -154,28 +218,49 @@ export function crearArrastre({ modulos, camera, renderer, orbit, piso, alCambia
       return;
     }
 
-    const modulo = moduloBajoPuntero();
+    // Sin gesto activo: resaltar lo que esté bajo el cursor
+    const enEsfera = sobreEsfera();
+    gizmo.resaltar(enEsfera);
+
+    const modulo = enEsfera ? null : moduloBajoPuntero(); // sobre la esfera, el módulo no se resalta
     if (modulo !== hover) {
       const anterior = hover;
       hover = modulo;
       if (anterior) refrescarColor(anterior);
       if (hover) refrescarColor(hover);
-      canvas.style.cursor = hover ? 'grab' : 'auto';
     }
+    canvas.style.cursor = (hover || enEsfera) ? 'grab' : 'auto';
   });
 
   function soltar(e) {
-    if (!arrastrando) return;
-    const modulo = arrastrando;
-    arrastrando = null;
-    orbit.enabled = true;
-
     if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
 
-    intentarSnap(modulo);
-    hover = modulo;
-    revisarModulo(modulo); // el snap pudo moverlo, se vuelve a revisar
-    canvas.style.cursor = 'grab';
+    if (rotando) {
+      const modulo = rotando;
+      rotando = null;
+      orbit.enabled = true;
+      revisarModulo(modulo); // vuelve a su color normal (o rojo si quedó fuera)
+      canvas.style.cursor = 'grab';
+      return;
+    }
+
+    if (arrastrando) {
+      const modulo = arrastrando;
+      arrastrando = null;
+      orbit.enabled = true;
+      intentarSnap(modulo);
+      hover = modulo;
+      revisarModulo(modulo); // el snap pudo moverlo, se vuelve a revisar
+      canvas.style.cursor = 'grab';
+      return;
+    }
+
+    // Clic en el vacío sin mover el mouse: se quita la selección.
+    // Si el mouse sí se movió, era para girar la cámara y la selección se conserva.
+    if (e.type !== 'pointerup' || e.button !== 0) return;
+    const distancia = Math.hypot(e.clientX - inicioClic.x, e.clientY - inicioClic.y);
+    apuntarRayo(e);
+    if (distancia < UMBRAL_CLIC && !moduloBajoPuntero()) deseleccionar();
   }
 
   canvas.addEventListener('pointerup', soltar);
@@ -183,5 +268,11 @@ export function crearArrastre({ modulos, camera, renderer, orbit, piso, alCambia
 
   // Lo que index.html puede usar. obtenerHover es una función (no el valor) para que
   // siempre devuelva el hover actual, no el que había al crear el arrastre.
-  return { revisarTodos, quitar, obtenerHover: () => hover };
+  return {
+    revisarTodos,
+    quitar,
+    deseleccionar,
+    obtenerHover: () => hover,
+    obtenerSeleccionado: () => seleccionado
+  };
 }
