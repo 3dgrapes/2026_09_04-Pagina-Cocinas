@@ -28,4 +28,4 @@ Después abre `http://localhost:8080` en el navegador.
 | Ejecutar con Docker | #3 | #9 |
 | Catálogo de módulos | #2 | #11 |
 | Eliminación de módulos | #6 | #12 |
-| Rotación de módulos | #6 | #16 |
+| Rotación de módulos | #7 | #16 |

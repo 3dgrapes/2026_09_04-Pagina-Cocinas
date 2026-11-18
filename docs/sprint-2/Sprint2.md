@@ -110,7 +110,7 @@ Reglas descubiertas durante el sprint, que deben cumplir los modelos nuevos:
 
 ## Pendientes y mejoras para el siguiente sprint
 
-| # | Historia o mejora | Prioridad |
+| Historia del backlog | Historia o mejora | Prioridad |
 |---|---|---|
 | 4 | Ver el ancho total de los módulos conectados | Alta |
 | 13 | Visualización del precio total de los módulos | Alta |

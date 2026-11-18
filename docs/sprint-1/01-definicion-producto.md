@@ -13,7 +13,7 @@ Entregar una versión funcional que corra con Docker, donde el usuario elija dis
 
 ## Alcance del mes
 
-**Dentro del alcance:** catálogo de 3 tipos de módulo, agregar y mover módulos, snapping con rotación, medición del ancho total, ejecución con Docker.
+**Dentro del alcance:** catálogo de 9 tipos de módulo, agregar y mover módulos, snapping con rotación, medición del ancho total, ejecución con Docker.
 
 **Fuera del alcance (por ahora):** cuentas de usuario, guardar diseños, base de datos, cotizaciones, soporte táctil para celular, publicación en WordPress.
 

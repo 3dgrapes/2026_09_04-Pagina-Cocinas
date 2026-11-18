@@ -10,12 +10,12 @@ El usuario puede agregar distintos tipos de módulo desde un catálogo, y la apl
 
 | Historia | Issue | Pull request | Estado |
 |---|---|---|---|
-| Elegir un tipo de módulo de un catálogo para agregarlo a la escena | #3 | #9 | Completada |
-| Ejecutar la app con un solo comando de Docker | #2 | #11 | Completada |
+| Elegir un tipo de módulo de un catálogo para agregarlo a la escena | #2 | #11 | Completada |
+| Ejecutar la app con un solo comando de Docker | #3 | #9 | Completada |
 
 Además del alcance comprometido, el sprint incluyó:
 
-- Los 9 modelos de módulos de cocina modelados en Blender y exportados a GLB (pull request #N).
+- Los 9 modelos de módulos de cocina modelados en Blender y exportados a GLB (pull request #11).
 - Arrastre de módulos sobre el piso, con el módulo pegado al cursor desde cualquier ángulo de cámara.
 - Snapping entre módulos mediante puntos de anclaje (`Snap_*`).
 - Piso redimensionable por el usuario, aviso y resaltado en rojo para módulos fuera del piso, y límites de zoom y paneo de la cámara.
